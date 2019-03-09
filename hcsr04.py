@@ -1,7 +1,7 @@
 import machine, time
 from math import sqrt
 
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 __author__ = 'Roberto Sánchez'
 __license__ = "Apache License 2.0. https://www.apache.org/licenses/LICENSE-2.0"
 
@@ -10,7 +10,7 @@ class HCSR04:
     Driver to use the untrasonic sensor HC-SR04.
     The sensor range is between 2cm and 4m.
 
-    The timeouts received listening to echo pin are converted to OSError('Out of range')
+    The timeouts received listening to echo pin are considered 'Inf' distance.
 
     """
     # echo_timeout_us is based in chip range limit (400cm)
@@ -41,15 +41,14 @@ class HCSR04:
         # Init echo pin (in)
         self.echo = machine.Pin(echo_pin, mode=machine.Pin.IN, pull=None)
 
-    # NOT SURE ABOUT THIS, BETTER IF RAISED AN EXCEPTION
+
     def _check_air_temp(self, temperature):
         """
         Check if air temp is in the working range of the sensor
         """
         if self.min_working_temp <= temperature <= self.max_working_temp:
             return temperature
-        else:
-            print("Temperature is out of working range")
+        raise ValueError("Temperature is out of working range")
 
     def _get_sound_speed(self):
         """
@@ -71,13 +70,11 @@ class HCSR04:
         # Send a 10us pulse.
         time.sleep_us(10)
         self.trigger.value(0)
-        try:
-            pulse_time = machine.time_pulse_us(self.echo, 1, self.echo_timeout_us)
-            return pulse_time
-        except OSError as ex:
-            if ex.args[0] == 110: # 110 = ETIMEDOUT
-                raise OSError('Out of range')
-            raise ex
+        pulse_time = machine.time_pulse_us(self.echo, 1, self.echo_timeout_us)
+        # New timeouts condition in Micropython 1.9+
+        if pulse_time < 0: 
+        	return float('Inf')
+        return pulse_time
 
     def distance_mm(self):
         """
